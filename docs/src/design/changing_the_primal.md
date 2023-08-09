@@ -3,11 +3,11 @@
 These design notes are to help you understand ChainRules.jl's [`rrule`](@ref) function.
 It explains why we have a `rrule` function that returns both the primal result (i.e. the output for the forward pass) and the pullback as a closure.
 It might be surprising to some AD authors, who might expect just a function that performs the pullback, that the `rrule` function computes the primal result as well as the pullback.
-In particularly, `rrule` allows you to _change_ how the primal result is computed.
+In particular, `rrule` allows you to _change_ how the primal result is computed.
 We will illustrate in this document why being able to change the computation of the primal is crucial for efficient AD.
 
 !!! note "What about `frule`?"
-    Discussion here is focused on on reverse mode and `rrule`.
+    Discussion here is focused on reverse mode and `rrule`.
     Similar concerns do apply to forward mode and `frule`.
     In forward mode these concerns lead to the fusing of the `pushforward` into `frule`.
     All the examples given here also apply in forward mode.
@@ -20,7 +20,7 @@ Let's imagine a different system for rules, one that doesn't let you define the 
 This system is what a lot of AD systems have.
 It is what [Nabla.jl](https://github.com/invenia/Nabla.jl/) had originally.[^1]
 We will have a primal (i.e. forward) pass that directly executes the primal function and just records the primal _function_, its _inputs_ and its _output_ onto the tape.[^2].
-Then during the gradient (i.e. reverse) pass it has a function which receives those records from the tape along with the sensitivity of the output, and gives back the sensitivity of the input.
+Then during the gradient (i.e. reverse) pass it has a function that receives those records from the tape along with the sensitivity of the output and gives back the sensitivity of the input.
 We will call this function `pullback_at`, as it pulls back the sensitivity at a given primal point.
 To make this concrete:
 ```julia
@@ -95,7 +95,7 @@ So we can save time, if we can reuse that `exp(x)`.
 ```@raw html
 <details open><summary>Example for the logistic sigmoid</summary>
 ```
-If we have to computing separately:
+If we have to compute separately:
 ```julia
 julia> @btime 1/(1+exp(x)) setup=(x=rand());
   5.622 ns (0 allocations: 0 bytes)
@@ -133,8 +133,8 @@ How can we incorporate this insight into our system?
 We know we can compute both of these in the primal — because they only depend on `x` and not on `ȳ` — but there is nowhere to put them that is accessible both to the primal pass and the gradient pass code.
 
 What if we introduced some variable called `intermediates` that is also recorded onto the tape during the primal pass?
-We would need to be able to modify the primal pass to do this, so that we can actually put the data into the `intermediates`.
-So we will introduce a function: `augmented_primal`, that will return the primal output plus the `intermediates` that we want to reuse in the gradient pass.
+We would need to be able to modify the primal pass to do this so that we can actually put the data into the `intermediates`.
+So we will introduce a function, `augmented_primal`, that will return the primal output plus the `intermediates` that we want to reuse in the gradient pass.
 Then we will make our AD system replace calls to the primal with calls to the `augmented_primal` of the primal function and take care of all the bookkeeping.
 So that would look like:
 ```julia
@@ -242,7 +242,7 @@ That now looks much simpler; `pullback_at` only ever has 2 arguments.
 One way we could make it nicer to use is by making `PullbackMemory` a callable object.
 Conceptually, for a particular evaluation of an operation, the `PullbackMemory` is fixed.
 It is fully determined by the end of the primal pass.
-The during the gradient (reverse) pass the `PullbackMemory` is used to successively compute the `ȳ`  argument.
+Then during the gradient (reverse) pass the `PullbackMemory` is used to successively compute the `ȳ`  argument.
 So it makes sense to make `PullbackMemory` a callable object that acts on the sensitivity.
 We can do that via call overloading:
 ```julia
@@ -287,7 +287,7 @@ We now have an object `pb` that acts on the cotangent of the output of the prima
 _`pb` is not just the **memory** of state required for the `pullback`, it **is** the pullback._
 
 We have one final thing to do, which is to think about how we make the code easy to modify.
-Let's go back and think about the changes we would have make to go from our original way of writing that only used the inputs/outputs, to one that used the intermediate state.
+Let's go back and think about the changes we would have to make to go from our original way of writing that only used the inputs/outputs, to one that used the intermediate state.
 
 ```@raw html
 <details open><summary>Example for `sin`</summary>
@@ -426,7 +426,7 @@ So we can extract the code for that into our augmented primal, and add rememberi
 See the [code for this in ChainRules.jl](https://github.com/JuliaDiff/ChainRules.jl/blob/v0.7.49/src/rulesets/LinearAlgebra/matfun.jl)
 
 An interesting scenario here that may be of concern to some:
-if Julia changes the algorithm it uses to compute `exp(::Matrix)`, then during an AD primal pass, it will continue to use the old Padé approximation based algorithm.
+if Julia changes the algorithm it uses to compute `exp(::Matrix)`, then during an AD primal pass, it will continue to use the old Padé approximation-based algorithm.
 This may actually happen, as there are many other algorithms that can compute the matrix exponential.
 Further, perhaps there might be an improvement to the exact coefficient or cut-offs used by Julia's current Padé approximation.
 If Julia made this change it would not be considered breaking.
@@ -462,7 +462,7 @@ Roughly speaking:
 When solving such a system, the efficient way to do so is to factorize `A` into an appropriate factorized form such as `Cholesky` or `QR`, then perform the `\` operation on the factorized form.
 The pullback of `A\B` with respect to `B` is `Ȳ -> A' \ Ȳ`.
 It should be noted that this involves computing the factorization of `A'` (the adjoint of `A`).[^8]
-In this computation the factorization of the original `A` can reused.
+In this computation the factorization of the original `A` can be reused.
 Doing so can give a 4x speed-up.
 
 We don't have this in ChainRules.jl yet, because Julia is missing some definitions of `adjoint` of factorizations ([JuliaLang/julia#38293](https://github.com/JuliaLang/julia/issues/38293)).[^8]
@@ -471,10 +471,10 @@ You can see what the code would look like in [PR #302](https://github.com/JuliaD
 
 ## Conclusion
 This document has explained why [`rrule`](@ref) is the way it is.
-In particular it has highlighted why the primal computation is able to be changed from simply calling the function.
+In particular, it has highlighted why the primal computation is able to be changed from simply calling the function.
 Further, it has explained why `rrule` returns a closure for the pullback, rather than it being a separate function.
 It has highlighted several places in ChainRules.jl where this has allowed us to significantly improve performance.
-Being able to change the primal computation is practically essential for a high performance AD system.
+Being able to change the primal computation is practically essential for a high-performance AD system.
 
 [^1]:
     I am not just picking on Nabla randomly.
